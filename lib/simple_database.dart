@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// The size of the database entries in bytes.
 const int entrySize = 256;
 
-/// All the commands that can be sent and received between [SimpleDatabase] and
+/// All the command codes that can be sent and received between [SimpleDatabase] and
 /// [_SimpleDatabaseServer].
 enum _Codes {
   init,
@@ -125,7 +125,11 @@ class SimpleDatabase {
   final Isolate _isolate;
   final String _path;
   late final SendPort _sendPort;
+  // Completers are stored in a queue so multiple commands can queued up and
+  // handled serially.
   final Queue<Completer<void>> _completers = Queue<Completer<void>>();
+  // Similarly, StreamControllers are stored in a queue so they can be handled
+  // asynchronously and serially.
   final Queue<StreamController<String>> _resultsStream =
       Queue<StreamController<String>>();
 

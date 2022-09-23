@@ -6,6 +6,29 @@ import 'dart:isolate';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// The following database works by spawning a background isolate and
+// communicating with it over Dart's SendPort API. It is presented below as a
+// demonstration of the feature "Background Isolate Channels" and shows using
+// plugins from a background isolate. The [SimpleDatabase] operates on the root
+// isolate and the [_SimpleDatabaseServer] operates on a background isolate.
+//
+// Here is an example of the protocol they use to communicate:
+//
+//  _________________                         ________________________
+//  [:SimpleDatabase]                         [:_SimpleDatabaseServer]
+//  -----------------                         ------------------------
+//         |                                              |
+//         |<---------------(init)------------------------|
+//         |----------------(init)----------------------->|
+//         |                                              |
+//         |----------------(add)------------------------>|
+//         |<---------------(ack)-------------------------|
+//         |                                              |
+//         |----------------(query)---------------------->|
+//         |<---------------(result)----------------------|
+//         |<---------------(result)----------------------|
+//         |<---------------(done)------------------------|
+
 /// The size of the database entries in bytes.
 const int entrySize = 256;
 
@@ -28,6 +51,9 @@ class _Command {
 }
 
 /// The portion of the [SimpleDatabase] that runs on the background isolate.
+/// 
+/// This is where we use the new feature Background Isolate Channels, which
+/// allows us to use plugins from background isolates.
 class _SimpleDatabaseServer {
   final SendPort _sendPort;
   String? _path;
@@ -98,14 +124,18 @@ class _SimpleDatabaseServer {
   Future<void> _onCommand(_Command command) async {
     if (command.code == _Codes.init) {
       _path = command.args[0];
+      // ----------------------------------------------------------------------
       // The [RootIsolateToken] is required for
       // [BackgroundIsolateBinaryMessenger.ensureInitialized] and must be
       // obtained on the root isolate and passed into the background isolate via
       // a [SendPort].
+      // ----------------------------------------------------------------------
       RootIsolateToken rootIsolateToken = command.args[1];
+      // ----------------------------------------------------------------------
       // [BackgroundIsolateBinaryMessenger.ensureInitialized] must be called
       // before using any plugins. This sets up the [BinaryMessenger] that the
       // Platform Channels will communicate with on the background isolate.
+      // ----------------------------------------------------------------------
       BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
       _sharedPreferences = await SharedPreferences.getInstance();
     } else if (command.code == _Codes.add) {
@@ -176,10 +206,12 @@ class SimpleDatabase {
     if (command.code == _Codes.init) {
       _sendPort = command.args[0];
       _completers.removeLast().complete();
+      // ----------------------------------------------------------------------
       // Before using platform channels and plugins from background isolates we
       // need to register it with its root isolate. This is achieved by
       // acquiring a [RootIsolateToken] which the background isolate uses to
       // invoke [BackgroundIsolateBinaryMessenger.ensureInitialized].
+      // ----------------------------------------------------------------------
       RootIsolateToken rootIsolateToken = RootIsolateToken.instance!;
       _sendPort.send(_Command(_Codes.init, <dynamic>[_path, rootIsolateToken]));
     } else if (command.code == _Codes.ack) {

@@ -11,13 +11,20 @@ const int entrySize = 256;
 
 /// All the commands that can be sent and received between [SimpleDatabase] and
 /// [_SimpleDatabaseServer].
-enum _Commands {
+enum _Codes {
   init,
   add,
   query,
   ack,
   result,
   done,
+}
+
+/// A command sent between [SimpleDatabase] and [_SimpleDatabaseServer].
+class _Command {
+  final _Codes code;
+  final List<dynamic> args;
+  _Command(this.code, this.args);
 }
 
 /// The portion of the [SimpleDatabase] that runs on the background isolate.
@@ -33,10 +40,10 @@ class _SimpleDatabaseServer {
   /// The main entrypoint for the background isolate.
   static void _run(SendPort sendPort) {
     ReceivePort receivePort = ReceivePort();
-    sendPort.send([_Commands.init, receivePort.sendPort]);
+    sendPort.send(_Command(_Codes.init, <dynamic>[receivePort.sendPort]));
     final _SimpleDatabaseServer server = _SimpleDatabaseServer(sendPort);
     receivePort.listen((dynamic message) async {
-      final List command = message as List;
+      final _Command command = message as _Command;
       server._onCommand(command);
     });
   }
@@ -63,7 +70,7 @@ class _SimpleDatabaseServer {
     }
     await writer.writeFrom(bytes);
     await writer.close();
-    _sendPort.send([_Commands.ack, null]);
+    _sendPort.send(_Command(_Codes.ack, <dynamic>[null]));
   }
 
   /// Perform the find entry operation.
@@ -79,32 +86,32 @@ class _SimpleDatabaseServer {
         List<int> foo = buffer.takeWhile((value) => value != 0).toList();
         String string = utf8.decode(foo);
         if (string.contains(query)) {
-          _sendPort.send([_Commands.result, string]);
+          _sendPort.send(_Command(_Codes.result, <dynamic>[string]));
         }
       }
       reader.closeSync();
     }
-    _sendPort.send([_Commands.done, null]);
+    _sendPort.send(_Command(_Codes.done, <dynamic>[null]));
   }
 
   /// Handle the [command] received from the [ReceivePort].
-  Future<void> _onCommand(List command) async {
-    if (command[0] == _Commands.init) {
-      _path = command[1];
+  Future<void> _onCommand(_Command command) async {
+    if (command.code == _Codes.init) {
+      _path = command.args[0];
       // The [RootIsolateToken] is required for
       // [BackgroundIsolateBinaryMessenger.ensureInitialized] and must be
       // obtained on the root isolate and passed into the background isolate via
       // a [SendPort].
-      RootIsolateToken rootIsolateToken = command[2];
+      RootIsolateToken rootIsolateToken = command.args[1];
       // [BackgroundIsolateBinaryMessenger.ensureInitialized] must be called
       // before using any plugins. This sets up the [BinaryMessenger] that the
       // Platform Channels will communicate with on the background isolate.
       BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
       _sharedPreferences = await SharedPreferences.getInstance();
-    } else if (command[0] == _Commands.add) {
-      await _doAddEntry(command[1]);
-    } else if (command[0] == _Commands.query) {
-      _doFind(command[1]);
+    } else if (command.code == _Codes.add) {
+      await _doAddEntry(command.args[0]);
+    } else if (command.code == _Codes.query) {
+      _doFind(command.args[0]);
     }
   }
 }
@@ -133,7 +140,7 @@ class SimpleDatabase {
     Completer<void> completer = Completer<void>();
     result._completers.addFirst(completer);
     receivePort.listen((message) {
-      result._onCommand(message as List);
+      result._onCommand(message as _Command);
     });
     await completer.future;
     return result;
@@ -145,7 +152,7 @@ class SimpleDatabase {
     // background isolate, see [__SimpleDatabaseServer._doAddEntry].
     Completer<void> completer = Completer<void>();
     _completers.addFirst(completer);
-    _sendPort.send([_Commands.add, value]);
+    _sendPort.send(_Command(_Codes.add, <dynamic>[value]));
     return completer.future;
   }
 
@@ -155,27 +162,27 @@ class SimpleDatabase {
     // background isolate, see [__SimpleDatabaseServer._doFind].
     StreamController<String> resultsStream = StreamController<String>();
     _resultsStream.addFirst(resultsStream);
-    _sendPort.send([_Commands.query, query]);
+    _sendPort.send(_Command(_Codes.query, <dynamic>[query]));
     return resultsStream.stream;
   }
 
   /// Handler invoked when a message is received from the port communicating
   /// with the database server.
-  void _onCommand(List command) {
-    if (command[0] == _Commands.init) {
-      _sendPort = command[1];
+  void _onCommand(_Command command) {
+    if (command.code == _Codes.init) {
+      _sendPort = command.args[0];
       _completers.removeLast().complete();
       // Before using platform channels and plugins from background isolates we
       // need to register it with its root isolate. This is achieved by
       // acquiring a [RootIsolateToken] which the background isolate uses to
       // invoke [BackgroundIsolateBinaryMessenger.ensureInitialized].
       RootIsolateToken rootIsolateToken = RootIsolateToken.instance!;
-      _sendPort.send([_Commands.init, _path, rootIsolateToken]);
-    } else if (command[0] == _Commands.ack) {
+      _sendPort.send(_Command(_Codes.init, <dynamic>[_path, rootIsolateToken]));
+    } else if (command.code == _Codes.ack) {
       _completers.removeLast().complete();
-    } else if (command[0] == _Commands.result) {
-      _resultsStream.last.add(command[1]);
-    } else if (command[0] == _Commands.done) {
+    } else if (command.code == _Codes.result) {
+      _resultsStream.last.add(command.args[0]);
+    } else if (command.code == _Codes.done) {
       _resultsStream.removeLast().close();
     }
   }

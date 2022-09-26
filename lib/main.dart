@@ -55,6 +55,9 @@ class _MyHomePageState extends State<MyHomePage> {
   /// asynchronous. The value is `null` before any result has been received.
   List<String>? _entries;
 
+  /// What is searched for in the [SimpleDatabase].
+  String _query = '';
+
   _MyHomePageState() {
     // Write the value to [SharedPreferences] which will get read on the
     // [SimpleDatabase]'s isolate.
@@ -84,8 +87,11 @@ class _MyHomePageState extends State<MyHomePage> {
 
   /// Performs a find on [SimpleDatabase] with [query] and updates the listed
   /// contents.
-  void _refresh({String query = ''}) {
-    _database?.find(query).toList().then((entries) {
+  void _refresh({String? query}) {
+    if (query != null) {
+      _query = query;
+    }
+    _database?.find(_query).toList().then((entries) {
       setState(() {
         _entries = entries;
       });

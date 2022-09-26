@@ -9,6 +9,11 @@ import 'package:uuid/uuid.dart' as uuid;
 
 import 'simple_database.dart';
 
+///////////////////////////////////////////////////////////////////////////////
+// This is the UI which will present the contents of the [SimpleDatabase]. To
+// see where Background Isolate Channels are used see simple_database.dart.
+///////////////////////////////////////////////////////////////////////////////
+
 void main() {
   runApp(const MyApp());
 }
@@ -40,13 +45,33 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  /// The database that is running on a background [Isolate]. This is nullable
+  /// because acquiring a [SimpleDatabase] is an asynchronous operation. This
+  /// value is `null` until the database is initialized.
   SimpleDatabase? _database;
+
+  /// Local cache of the query results returned by the [SimpleDatabase] for the
+  /// UI to render from. It is nullable since querying the results is
+  /// asynchronous. The value is `null` before any result has been received.
   List<String>? _entries;
 
   _MyHomePageState() {
-    SharedPreferences.getInstance()
-        .then((value) => value.setBool('isDebug', true));
-    path_provider.getTemporaryDirectory().then((Directory? tempDir) async {
+    // Write the value to [SharedPreferences] which will get read on the
+    // [SimpleDatabase]'s isolate.
+    final Future<void> sharedPreferencesSet = SharedPreferences.getInstance()
+        .then(
+            (sharedPreferences) => sharedPreferences.setBool('isDebug', true));
+    final Future<Directory> tempDirFuture =
+        path_provider.getTemporaryDirectory();
+
+    // Wait until the [SharedPreferences] value is set and the temporary
+    // directory is received before opening the database. If
+    // [sharedPreferencesSet] does not happen before opening the
+    // [SimpleDatabase] there has to be a way to refresh
+    // [_SimpleDatabaseServer]'s [SharedPreferences] cached values.
+    Future.wait([sharedPreferencesSet, tempDirFuture])
+        .then((List<dynamic> values) {
+      final Directory? tempDir = values[1];
       final String dbPath = path.join(tempDir!.path, 'database.db');
       SimpleDatabase.open(dbPath).then((SimpleDatabase database) {
         setState(() {
@@ -57,6 +82,8 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  /// Performs a find on [SimpleDatabase] with [query] and updates the listed
+  /// contents.
   void _refresh({String query = ''}) {
     _database?.find(query).toList().then((entries) {
       setState(() {
@@ -65,9 +92,11 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  /// Adds a UUID and a timestamp to the [SimpleDatabase].
   void _addDate() {
     final DateTime now = DateTime.now();
-    final DateFormat formatter = DateFormat('EEEE MMMM d, HH:mm:ss\n${const uuid.Uuid().v4()}');
+    final DateFormat formatter =
+        DateFormat('EEEE MMMM d, HH:mm:ss\n${const uuid.Uuid().v4()}');
     final String formatted = formatter.format(now);
     _database!.addEntry(formatted).then((_) => _refresh());
   }

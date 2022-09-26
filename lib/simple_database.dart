@@ -6,6 +6,10 @@ import 'dart:isolate';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+///////////////////////////////////////////////////////////////////////////////
+// **WARNING:** This is not production code and is only intended to be used for
+// demonstration purposes.
+//
 // The following database works by spawning a background isolate and
 // communicating with it over Dart's SendPort API. It is presented below as a
 // demonstration of the feature "Background Isolate Channels" and shows using
@@ -28,6 +32,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 //         |<---------------(result)----------------------|
 //         |<---------------(result)----------------------|
 //         |<---------------(done)------------------------|
+//
+///////////////////////////////////////////////////////////////////////////////
 
 /// The size of the database entries in bytes.
 const int entrySize = 256;
